@@ -1,0 +1,110 @@
+[build-system]
+requires = ['setuptools']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'pytorch_cpp_extensions'
+version = '0.0.1'
+description = 'PyTorch Cpp Extensions'
+readme = 'README.md'
+requires-python = '>=3.10'
+classifiers = [
+    'Programming Language :: Python :: 3',
+    'License :: OSI Approved :: Apache Software License',
+    'Operating System :: OS Independent',
+]
+dependencies = [
+    'torch',
+    'einops',
+]
+
+[project.license]
+file = 'LICENSE'
+
+[[project.authors]]
+name = 'Luting Wang'
+email = 'wangluting@buaa.edu.cn'
+
+[project.urls]
+Homepage = 'https://github.com/LutingWang/pytorch_cpp_extensions'
+
+[project.optional-dependencies]
+optional = [
+    'todd[dev,doc,test,optional]',
+]
+
+[tool.setuptools.packages.find]
+include = [
+    'pytorch_cpp_extensions*',
+]
+
+[tool.yapf]
+allow_split_before_dict_value = false
+coalesce_brackets = true
+dedent_closing_brackets = true
+split_arguments_when_comma_terminated = true
+split_complex_comprehension = true
+split_before_arithmetic_operator = true
+
+[tool.isort]
+profile = 'hug'
+src_paths = [
+    'tests',
+    'pytorch_cpp_extensions',
+]
+line_length = 79
+multi_line_output = 3
+
+[tool.pydocstyle]
+convention = 'google'
+
+[tool.mypy]
+files = [
+    'tests',
+    'pytorch_cpp_extensions',
+]
+plugins = 'numpy.typing.mypy_plugin'
+
+[tool.codespell]
+write-changes = true
+
+[[tool.mypy.overrides]]
+module = [
+    'einops.*',
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = 'tests'
+
+[tool.coverage.run]
+branch = true
+command_line = '-m pytest'
+source = [
+    'pytorch_cpp_extensions',
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    'pragma: no cover',
+
+    'def __repr__',
+    'def \w+_cli\(\)',
+
+    'raise AssertionError',
+    'raise NotImplementedError',
+
+    'if __name__ == .__main__.:',
+
+    'class .*\(.*\bProtocol\b.*\):',
+    '@(abc\.)?abstractmethod',
+    '@overload',
+]
+
+[tool.commitizen]
+name = 'cz_conventional_commits'
+version = "0.0.1"
+tag_format = 'v$version'
+version_files = [
+    'pyproject.toml:^version',
+]
