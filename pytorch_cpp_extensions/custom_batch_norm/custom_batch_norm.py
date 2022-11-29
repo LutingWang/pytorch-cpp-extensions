@@ -71,13 +71,14 @@ def custom_batch_norm_factory(
         forward = custom_batch_norm_cpp_forward
         backward = custom_batch_norm_cpp_backward
     elif name is Implementation.CUDA:
-        raise NotImplementedError(Implementation.CUDA)
+        forward = custom_batch_norm_cuda_forward
+        backward = custom_batch_norm_cuda_backward
 
     class CustomBatchNormFunction(torch.autograd.Function):
 
         @staticmethod
         def forward(
-            ctx: torch.autograd.function.FunctionCtx,
+            ctx: torch.autograd.function.BackwardCFunction,
             input_: torch.Tensor,
         ) -> torch.Tensor:
             output, mu, sigma = forward(input_)
@@ -86,11 +87,11 @@ def custom_batch_norm_factory(
 
         @staticmethod
         def backward(
-            ctx: torch.autograd.function.FunctionCtx,
+            ctx: torch.autograd.function.BackwardCFunction,
             grad: torch.Tensor,
         ) -> torch.Tensor:
             input_, mu, sigma = ctx.saved_tensors
-            return backward(grad, input_, mu, sigma)
+            return backward(grad.contiguous(), input_, mu, sigma)
 
     return cast(
         CustomBatchNormFunctionMetaProto,
@@ -115,18 +116,18 @@ except ImportError as e:
     print(e)
     pass
 
-# try:
-#     from .custom_batch_norm_cuda import (
-#         custom_batch_norm_cuda_backward,
-#         custom_batch_norm_cuda_forward,
-#     )
-#     custom_batch_norm_cuda = custom_batch_norm_factory(
-#         Implementation.CUDA,
-#     ).apply
-#     __all__.extend([
-#         'custom_batch_norm_cuda_forward',
-#         'custom_batch_norm_cuda_backward',
-#         'custom_batch_norm_cuda',
-#     ])
-# except ImportError:
-#     pass
+try:
+    from .custom_batch_norm_cuda import (
+        custom_batch_norm_cuda_backward,
+        custom_batch_norm_cuda_forward,
+    )
+    custom_batch_norm_cuda = custom_batch_norm_factory(
+        Implementation.CUDA,
+    ).apply
+    __all__.extend([
+        'custom_batch_norm_cuda_forward',
+        'custom_batch_norm_cuda_backward',
+        'custom_batch_norm_cuda',
+    ])
+except ImportError:
+    pass

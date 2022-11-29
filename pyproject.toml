@@ -1,5 +1,8 @@
 [build-system]
-requires = ['setuptools']
+requires = [
+    'setuptools',
+    'torch==1.8.1+cu101',
+]
 build-backend = 'setuptools.build_meta'
 
 [project]
@@ -7,7 +10,7 @@ name = 'pytorch_cpp_extensions'
 version = '0.0.1'
 description = 'PyTorch Cpp Extensions'
 readme = 'README.md'
-requires-python = '>=3.10'
+requires-python = '>=3.9'
 classifiers = [
     'Programming Language :: Python :: 3',
     'License :: OSI Approved :: Apache Software License',
@@ -30,7 +33,7 @@ Homepage = 'https://github.com/LutingWang/pytorch_cpp_extensions'
 
 [project.optional-dependencies]
 optional = [
-    'todd[dev,doc,test,optional]',
+    'todd_ai[dev,doc,test,optional]==0.2.4a5',
 ]
 
 [tool.setuptools.packages.find]

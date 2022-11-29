@@ -14,6 +14,19 @@
             ],
             "compilerPath": "/usr/bin/clang",
             "intelliSenseMode": "macos-clang-arm64"
+        },
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/usr/local/cuda-10.1/include",
+                "/data2/wlt/anaconda3/envs/todd/include/python3.9",
+                "/data2/wlt/anaconda3/envs/todd/lib/python3.9/site-packages/torch/include",
+                "/data2/wlt/anaconda3/envs/todd/lib/python3.9/site-packages/torch/include/torch/csrc/api/include"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/local/cuda/bin/nvcc",
+            "intelliSenseMode": "linux-gcc-x64"
         }
     ],
     "version": 4
