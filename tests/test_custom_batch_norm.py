@@ -1,10 +1,7 @@
-from typing import Callable
-
 import pytest
 import torch
 
 from pytorch_cpp_extensions.custom_batch_norm import (
-    CustomBatchNormTuple,
     custom_batch_norm,
     custom_batch_norm_backward,
     custom_batch_norm_cpp,
@@ -16,41 +13,28 @@ from pytorch_cpp_extensions.custom_batch_norm import (
     custom_batch_norm_forward,
 )
 
+M = 100
+D = 256
 
-class TestCPU:
 
-    @pytest.mark.parametrize(
-        ['forward', 'backward', 'device'],
-        [
-            (custom_batch_norm_forward, custom_batch_norm_backward, 'cpu'),
-            (custom_batch_norm_forward, custom_batch_norm_backward, 'cuda'),
-            (
-                custom_batch_norm_cpp_forward,
-                custom_batch_norm_cpp_backward,
-                'cpu',
+@pytest.mark.parametrize(
+    'device',
+    [
+        'cpu',
+        pytest.param(
+            'cuda',
+            marks=pytest.mark.skipif(
+                not torch.cuda.is_available(),
+                reason='requires CUDA support',
             ),
-            (
-                custom_batch_norm_cpp_forward,
-                custom_batch_norm_cpp_backward,
-                'cuda',
-            ),
-        ],
-    )
-    def test_forward_backward(
-        self,
-        forward: Callable[[torch.Tensor], CustomBatchNormTuple],
-        backward: Callable[  # yapf: disable
-            [torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
-            torch.Tensor,
-        ],
-        device: str,
-    ) -> None:
-        input_ = torch.tensor(
-            [[15.0], [-1.0]],
-            requires_grad=True,
-            device=device,
-        )
-        output, mu, sigma = forward(input_)
+        ),
+    ],
+)
+class TestCustomBatchNorm:
+
+    def test_forward(self, device: str) -> None:
+        input_ = torch.tensor([[15.0], [-1.0]], device=device)
+        output, mu, sigma = custom_batch_norm_forward(input_)
         assert torch.allclose(
             output,
             torch.tensor([[1.0], [-1.0]], device=device),
@@ -58,60 +42,117 @@ class TestCPU:
         assert torch.allclose(mu, torch.tensor([[7.0]], device=device))
         assert torch.allclose(sigma, torch.tensor([[8.0]], device=device))
 
-        output.sum().backward()
-        grad = backward(torch.ones(2, 1, device=device), input_, mu, sigma)
-        assert torch.allclose(grad, input_.grad)
+    def test_backward(self, device: str) -> None:
+        grad = custom_batch_norm_backward(
+            torch.ones(2, 1, device=device),
+            torch.tensor([[15.0], [-1.0]], device=device),
+            torch.tensor([[7.0]], device=device),
+            torch.tensor([[8.0]], device=device),
+        )
+        assert torch.allclose(grad, torch.zeros(2, 1, device=device))
 
-    @pytest.mark.parametrize(
-        'function_',
-        [custom_batch_norm, custom_batch_norm_cpp],
-    )
-    def test_function(
-        self,
-        function_: Callable[[torch.Tensor], torch.Tensor],
-    ) -> None:
-        input_ = torch.tensor([[15.0], [-1.0]], requires_grad=True)
-        output: torch.Tensor = function_(input_)
-        assert torch.allclose(output, torch.tensor([[1.0], [-1.0]]))
-
-        output.sum().backward()
-        assert torch.allclose(input_.grad, torch.zeros(2, 1))
-
-
-class TestCUDA:
-
-    def test_forward_backward(self) -> None:
+    def test_function(self, device: str) -> None:
         input_ = torch.tensor(
             [[15.0], [-1.0]],
+            device=device,
             requires_grad=True,
-            device='cuda',
         )
-        output, mu, sigma = custom_batch_norm_cuda_forward(input_)
+        output = custom_batch_norm(input_)
         assert torch.allclose(
-            output, torch.tensor([[1.0], [-1.0]], device='cuda')
+            output,
+            torch.tensor([[1.0], [-1.0]], device=device),
         )
-        assert torch.allclose(mu, torch.tensor([[7.0]], device='cuda'))
-        assert torch.allclose(sigma, torch.tensor([[8.0]], device='cuda'))
 
-        grad = custom_batch_norm_cuda_backward(
-            torch.ones(2, 1, device='cuda'),
+        output.sum().backward()
+        assert torch.allclose(input_.grad, torch.zeros(2, 1, device=device))
+
+
+@pytest.mark.parametrize(
+    'device',
+    [
+        'cpu',
+        pytest.param(
+            'cuda',
+            marks=pytest.mark.skipif(
+                not torch.cuda.is_available(),
+                reason='requires CUDA support',
+            ),
+        ),
+    ],
+)
+class TestCustomBatchNormCpp:
+
+    def test_forward(self, device: str) -> None:
+        input_ = torch.rand(M, D, device=device)
+        output, mu, sigma = custom_batch_norm_forward(input_)
+        output_cpp, mu_cpp, sigma_cpp = custom_batch_norm_cpp_forward(input_)
+        assert torch.allclose(output, output_cpp)
+        assert torch.allclose(mu, mu_cpp)
+        assert torch.allclose(sigma, sigma_cpp)
+
+    def test_backward(self, device: str) -> None:
+        input_ = torch.rand(M, D, device=device)
+        _, mu, sigma = custom_batch_norm_forward(input_)
+        grad = custom_batch_norm_backward(
+            torch.ones(M, D, device=device),
             input_,
             mu,
             sigma,
         )
-        assert torch.allclose(grad, torch.zeros(2, 1, device='cuda'))
+        grad_cpp = custom_batch_norm_cpp_backward(
+            torch.ones(M, D, device=device),
+            input_,
+            mu,
+            sigma,
+        )
+        assert torch.allclose(grad, grad_cpp)
 
-    def test_function(self) -> None:
-        input_ = torch.tensor(
-            [[15.0], [-1.0]],
-            requires_grad=True,
-            device='cuda',
-        )
-        output: torch.Tensor = custom_batch_norm_cuda(input_)
-        assert torch.allclose(
-            output,
-            torch.tensor([[1.0], [-1.0]], device='cuda'),
-        )
+    def test_function(self, device: str) -> None:
+        input_ = torch.rand(M, D, device=device, requires_grad=True)
+        input_cpp = input_.clone().detach().requires_grad_()
+        output = custom_batch_norm(input_)
+        output_cpp = custom_batch_norm_cpp(input_cpp)
+        assert torch.allclose(output, output_cpp)
 
         output.sum().backward()
-        assert torch.allclose(input_.grad, torch.zeros(2, 1, device='cuda'))
+        output_cpp.sum().backward()
+        assert torch.allclose(input_.grad, input_cpp.grad)
+
+
+class TestCustomBatchNormCuda:
+
+    def test_forward(self) -> None:
+        input_ = torch.rand(M, D, device='cuda')
+        output, mu, sigma = custom_batch_norm_forward(input_)
+        output_cpp, mu_cpp, sigma_cpp = custom_batch_norm_cuda_forward(input_)
+        assert torch.allclose(output, output_cpp, atol=1e-5)
+        assert torch.allclose(mu, mu_cpp)
+        assert torch.allclose(sigma, sigma_cpp)
+
+    def test_backward(self) -> None:
+        input_ = torch.rand(M, D, device='cuda')
+        _, mu, sigma = custom_batch_norm_forward(input_)
+        grad = custom_batch_norm_backward(
+            torch.ones(M, D, device='cuda'),
+            input_,
+            mu,
+            sigma,
+        )
+        grad_cpp = custom_batch_norm_cuda_backward(
+            torch.ones(M, D, device='cuda'),
+            input_,
+            mu,
+            sigma,
+        )
+        assert torch.allclose(grad, grad_cpp)
+
+    def test_function(self) -> None:
+        input_ = torch.rand(M, D, device='cuda', requires_grad=True)
+        input_cuda = input_.clone().detach().requires_grad_()
+        output = custom_batch_norm(input_)
+        output_cuda = custom_batch_norm_cuda(input_cuda)
+        assert torch.allclose(output, output_cuda, atol=1e-5)
+
+        output.sum().backward()
+        output_cuda.sum().backward()
+        assert torch.allclose(input_.grad, input_cuda.grad)

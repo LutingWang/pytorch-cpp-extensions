@@ -61,7 +61,7 @@ class CustomBatchNormFunctionMetaProto(Protocol):
     apply: Callable[[torch.Tensor], torch.Tensor]
 
 
-def custom_batch_norm_factory(
+def custom_batch_norm_function_factory(
     name: Implementation,
 ) -> CustomBatchNormFunctionMetaProto:
     if name is Implementation.PYTHON:
@@ -99,19 +99,23 @@ def custom_batch_norm_factory(
     )
 
 
-custom_batch_norm = custom_batch_norm_factory(Implementation.PYTHON).apply
+custom_batch_norm = custom_batch_norm_function_factory(
+    Implementation.PYTHON,
+).apply
 
 try:
     from .custom_batch_norm_cpp import (
         custom_batch_norm_cpp_backward,
         custom_batch_norm_cpp_forward,
     )
-    custom_batch_norm_cpp = custom_batch_norm_factory(Implementation.CPP).apply
     __all__.extend([
         'custom_batch_norm_cpp_forward',
         'custom_batch_norm_cpp_backward',
-        'custom_batch_norm_cpp',
     ])
+    custom_batch_norm_cpp = custom_batch_norm_function_factory(
+        Implementation.CPP,
+    ).apply
+    __all__.append('custom_batch_norm_cpp')
 except ImportError as e:
     print(e)
     pass
@@ -121,13 +125,13 @@ try:
         custom_batch_norm_cuda_backward,
         custom_batch_norm_cuda_forward,
     )
-    custom_batch_norm_cuda = custom_batch_norm_factory(
-        Implementation.CUDA,
-    ).apply
     __all__.extend([
         'custom_batch_norm_cuda_forward',
         'custom_batch_norm_cuda_backward',
-        'custom_batch_norm_cuda',
     ])
+    custom_batch_norm_cuda = custom_batch_norm_function_factory(
+        Implementation.CUDA,
+    ).apply
+    __all__.append('custom_batch_norm_cuda')
 except ImportError:
     pass
