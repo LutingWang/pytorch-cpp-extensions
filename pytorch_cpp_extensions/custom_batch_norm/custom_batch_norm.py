@@ -53,8 +53,11 @@ def custom_batch_norm_backward(
     Returns:
         :math:`(m, d)` grad for ``input_``
     """
-    m = grad.shape[0]
-    return grad / m * ((m - 1) / sigma - (input_ - mu)**2 / sigma**3)
+    output = (
+        grad / input_.shape[0] * ((input_.shape[0] - 1) / sigma -
+                                  (input_ - mu)**2 / sigma**3)
+    )
+    return output
 
 
 class CustomBatchNormFunctionMetaProto(Protocol):
