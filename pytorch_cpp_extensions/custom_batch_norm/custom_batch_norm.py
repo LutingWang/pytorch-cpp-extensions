@@ -3,9 +3,22 @@ __all__ = [
     'custom_batch_norm_forward',
     'custom_batch_norm_backward',
     'custom_batch_norm',
+    'custom_batch_norm_cpp_forward',
+    'custom_batch_norm_cpp_backward',
+    'custom_batch_norm_cpp',
+    'custom_batch_norm_cuda_forward',
+    'custom_batch_norm_cuda_backward',
+    'custom_batch_norm_cuda',
 ]
 
-from typing import Callable, NamedTuple, Protocol, cast
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    NamedTuple,
+    Protocol,
+    Sequence,
+    cast,
+)
 
 import einops
 import torch
@@ -15,7 +28,6 @@ from ..utils import Implementation
 
 class CustomBatchNormTuple(NamedTuple):
     output: torch.Tensor  # normalized features
-    mu: torch.Tensor  # mean
     sigma: torch.Tensor  # standard deviation
 
 
@@ -23,41 +35,39 @@ def custom_batch_norm_forward(input_: torch.Tensor) -> CustomBatchNormTuple:
     """Custom batch norm forward function in Python.
 
     Args:
-        input_: :math:`(m, d)`
+        input_: :math:`\\mathbf{x} \\in \\mathcal{R}^{m \\times d}`
 
     Returns:
-        :math:`(m, d)` output, and
-        :math:`\\mu, \\sigma \\in \\mathcal{R}^{1 \\times d}`,
+        :math:`\\mathbf{z} \\in \\mathcal{R}^{m \\times d}` and
+        :math:`\\sigma \\in \\mathcal{R}^{1 \\times d}`,
     """
     mu = einops.reduce(input_, 'm d -> 1 d', 'mean')
     output = input_ - mu
     sigma = einops.reduce(output**2, 'm d -> 1 d', 'mean')**0.5
     output = output / sigma
-    return CustomBatchNormTuple(output, mu, sigma)
+    return CustomBatchNormTuple(output, sigma)
 
 
 def custom_batch_norm_backward(
     grad: torch.Tensor,
-    input_: torch.Tensor,
-    mu: torch.Tensor,
+    output: torch.Tensor,
     sigma: torch.Tensor,
 ) -> torch.Tensor:
     """Custom batch norm backward function in Python.
 
     Args:
         grad: :math:`(m, d)`
-        input_: :math:`(m, d)`
-        mu: :math:`(1, d)`
+        output: :math:`(m, d)`
         sigma: :math:`(1, d)`
 
     Returns:
-        :math:`(m, d)` grad for ``input_``
+        :math:`(m, d)` grad for input
     """
-    output = (
-        grad / input_.shape[0] * ((input_.shape[0] - 1) / sigma -
-                                  (input_ - mu)**2 / sigma**3)
-    )
-    return output
+    grad = grad / sigma
+    mean_grad = einops.reduce(grad, 'm d -> 1 d', 'mean')
+    mean_output_grad = einops.reduce(output * grad, 'm d -> 1 d', 'mean')
+    grad_input = grad - mean_grad - output * mean_output_grad
+    return grad_input
 
 
 class CustomBatchNormFunctionMetaProto(Protocol):
@@ -67,6 +77,11 @@ class CustomBatchNormFunctionMetaProto(Protocol):
 def custom_batch_norm_function_factory(
     name: Implementation,
 ) -> CustomBatchNormFunctionMetaProto:
+    forward: Callable[[torch.Tensor], Sequence[torch.Tensor]]
+    backward: Callable[  # yapf: disable
+        [torch.Tensor, torch.Tensor, torch.Tensor],
+        torch.Tensor,
+    ]
     if name is Implementation.PYTHON:
         forward = custom_batch_norm_forward
         backward = custom_batch_norm_backward
@@ -84,8 +99,8 @@ def custom_batch_norm_function_factory(
             ctx: torch.autograd.function.BackwardCFunction,
             input_: torch.Tensor,
         ) -> torch.Tensor:
-            output, mu, sigma = forward(input_)
-            ctx.save_for_backward(input_, mu, sigma)
+            output, sigma = forward(input_)
+            ctx.save_for_backward(output, sigma)
             return output
 
         @staticmethod
@@ -93,8 +108,8 @@ def custom_batch_norm_function_factory(
             ctx: torch.autograd.function.BackwardCFunction,
             grad: torch.Tensor,
         ) -> torch.Tensor:
-            input_, mu, sigma = ctx.saved_tensors
-            return backward(grad.contiguous(), input_, mu, sigma)
+            output, sigma = ctx.saved_tensors
+            return backward(grad.contiguous(), output, sigma)
 
     return cast(
         CustomBatchNormFunctionMetaProto,
@@ -111,30 +126,25 @@ try:
         custom_batch_norm_cpp_backward,
         custom_batch_norm_cpp_forward,
     )
-    __all__.extend([
-        'custom_batch_norm_cpp_forward',
-        'custom_batch_norm_cpp_backward',
-    ])
     custom_batch_norm_cpp = custom_batch_norm_function_factory(
         Implementation.CPP,
     ).apply
-    __all__.append('custom_batch_norm_cpp')
-except ImportError as e:
-    print(e)
-    pass
+except ImportError:
+    if not TYPE_CHECKING:
+        custom_batch_norm_cpp_backward = None
+        custom_batch_norm_cpp_forward = None
+        custom_batch_norm_cpp = None
 
 try:
     from .custom_batch_norm_cuda import (
         custom_batch_norm_cuda_backward,
         custom_batch_norm_cuda_forward,
     )
-    __all__.extend([
-        'custom_batch_norm_cuda_forward',
-        'custom_batch_norm_cuda_backward',
-    ])
     custom_batch_norm_cuda = custom_batch_norm_function_factory(
         Implementation.CUDA,
     ).apply
-    __all__.append('custom_batch_norm_cuda')
 except ImportError:
-    pass
+    if not TYPE_CHECKING:
+        custom_batch_norm_cuda_backward = None
+        custom_batch_norm_cuda_forward = None
+        custom_batch_norm_cuda = None
