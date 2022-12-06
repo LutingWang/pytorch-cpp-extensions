@@ -147,8 +147,8 @@ class TestCustomBatchNormCuda:
 def test_grad_check(function_: Callable[[torch.Tensor], torch.Tensor]) -> None:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     input_ = torch.rand(
-        3,
-        1,
+        40,
+        4,
         device=device,
         dtype=torch.float64,
         requires_grad=True,

@@ -41,12 +41,15 @@ repos:
     rev: v0.982
     hooks:
       - id: mypy
+        exclude: docs
         additional_dependencies:
           - numpy
   - repo: https://github.com/codespell-project/codespell
     rev: v2.2.2
     hooks:
       - id: codespell
+        exclude_types:
+          - jupyter
         args:
           - tests
           - pytorch_cpp_extensions
