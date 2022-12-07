@@ -1,5 +1,5 @@
 __all__ = [
-    'custom_batch_norm',
+    'standardize',
 ]
 
-from . import custom_batch_norm
+from . import standardize

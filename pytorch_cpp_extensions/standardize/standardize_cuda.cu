@@ -92,7 +92,7 @@ __global__ void stat(
 }
 
 template <typename scalar_t>
-__global__ void custom_batch_norm_cuda_forward_kernel(
+__global__ void standardize_cuda_forward_kernel(
     const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
         input,
     const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
@@ -112,7 +112,7 @@ __global__ void custom_batch_norm_cuda_forward_kernel(
 }
 
 template <typename scalar_t>
-__global__ void custom_batch_norm_cuda_backward_kernel(
+__global__ void standardize_cuda_backward_kernel(
     const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
         grad,
     const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
@@ -135,8 +135,7 @@ __global__ void custom_batch_norm_cuda_backward_kernel(
            - (output[i][j] * mean_output_grad[0][j]));
 }
 
-std::vector<torch::Tensor> custom_batch_norm_cuda_forward(
-    torch::Tensor input) {
+std::vector<torch::Tensor> standardize_cuda_forward(torch::Tensor input) {
     CHECK_INPUT(input);
 
     dim3 threads(
@@ -169,9 +168,8 @@ std::vector<torch::Tensor> custom_batch_norm_cuda_forward(
     auto output = torch::zeros_like(input);
 
     AT_DISPATCH_FLOATING_TYPES(
-        input.type(), "custom_batch_norm_cuda_forward_kernel", ([&] {
-            custom_batch_norm_cuda_forward_kernel<
-                scalar_t><<<blocks, threads>>>(
+        input.type(), "standardize_cuda_forward_kernel", ([&] {
+            standardize_cuda_forward_kernel<scalar_t><<<blocks, threads>>>(
                 input.packed_accessor32<
                     scalar_t,
                     2,
@@ -190,7 +188,7 @@ std::vector<torch::Tensor> custom_batch_norm_cuda_forward(
     return {output, sigma};
 }
 
-torch::Tensor custom_batch_norm_cuda_backward(
+torch::Tensor standardize_cuda_backward(
     torch::Tensor grad, torch::Tensor output, torch::Tensor sigma) {
     CHECK_INPUT(grad);
     CHECK_INPUT(output);
@@ -208,29 +206,28 @@ torch::Tensor custom_batch_norm_cuda_backward(
     auto grad_input = torch::zeros_like(output);
 
     AT_DISPATCH_FLOATING_TYPES(
-        output.type(), "custom_batch_norm_cuda_backward", ([&] {
-            custom_batch_norm_cuda_backward_kernel<scalar_t>
-                <<<blocks, threads>>>(
-                    grad.packed_accessor32<
-                        scalar_t,
-                        2,
-                        torch::RestrictPtrTraits>(),
-                    output.packed_accessor32<
-                        scalar_t,
-                        2,
-                        torch::RestrictPtrTraits>(),
-                    mean_grad.packed_accessor32<
-                        scalar_t,
-                        2,
-                        torch::RestrictPtrTraits>(),
-                    mean_output_grad.packed_accessor32<
-                        scalar_t,
-                        2,
-                        torch::RestrictPtrTraits>(),
-                    grad_input.packed_accessor32<
-                        scalar_t,
-                        2,
-                        torch::RestrictPtrTraits>());
+        output.type(), "standardize_cuda_backward", ([&] {
+            standardize_cuda_backward_kernel<scalar_t><<<blocks, threads>>>(
+                grad.packed_accessor32<
+                    scalar_t,
+                    2,
+                    torch::RestrictPtrTraits>(),
+                output.packed_accessor32<
+                    scalar_t,
+                    2,
+                    torch::RestrictPtrTraits>(),
+                mean_grad.packed_accessor32<
+                    scalar_t,
+                    2,
+                    torch::RestrictPtrTraits>(),
+                mean_output_grad.packed_accessor32<
+                    scalar_t,
+                    2,
+                    torch::RestrictPtrTraits>(),
+                grad_input.packed_accessor32<
+                    scalar_t,
+                    2,
+                    torch::RestrictPtrTraits>());
         }));
 
     return grad_input;
@@ -238,11 +235,11 @@ torch::Tensor custom_batch_norm_cuda_backward(
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def(
-        "custom_batch_norm_cuda_forward",
-        &custom_batch_norm_cuda_forward,
-        "custom batch norm cuda forward");
+        "standardize_cuda_forward",
+        &standardize_cuda_forward,
+        "standardize cuda forward");
     m.def(
-        "custom_batch_norm_cuda_backward",
-        &custom_batch_norm_cuda_backward,
-        "custom batch norm cuda backward");
+        "standardize_cuda_backward",
+        &standardize_cuda_backward,
+        "standardize cuda backward");
 }

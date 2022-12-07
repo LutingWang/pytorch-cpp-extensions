@@ -3,11 +3,11 @@ import torch
 # isort: off
 
 
-def custom_batch_norm_cpp_forward(input_: torch.Tensor) -> list[torch.Tensor]:
+def standardize_cpp_forward(input_: torch.Tensor) -> list[torch.Tensor]:
     pass
 
 
-def custom_batch_norm_cpp_backward(
+def standardize_cpp_backward(
     grad: torch.Tensor,
     output: torch.Tensor,
     sigma: torch.Tensor,

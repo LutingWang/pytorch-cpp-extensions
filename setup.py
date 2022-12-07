@@ -8,7 +8,7 @@ from torch.utils.cpp_extension import (
     CUDAExtension,
 )
 
-ext_names = ['custom_batch_norm']
+ext_names = ['standardize']
 
 ext_modules = []
 for ext_name in ext_names:

@@ -1,14 +1,14 @@
 __all__ = [
     'CustomBatchNormTuple',
-    'custom_batch_norm_forward',
-    'custom_batch_norm_backward',
-    'custom_batch_norm',
-    'custom_batch_norm_cpp_forward',
-    'custom_batch_norm_cpp_backward',
-    'custom_batch_norm_cpp',
-    'custom_batch_norm_cuda_forward',
-    'custom_batch_norm_cuda_backward',
-    'custom_batch_norm_cuda',
+    'standardize_forward',
+    'standardize_backward',
+    'standardize',
+    'standardize_cpp_forward',
+    'standardize_cpp_backward',
+    'standardize_cpp',
+    'standardize_cuda_forward',
+    'standardize_cuda_backward',
+    'standardize_cuda',
 ]
 
 from typing import (
@@ -31,8 +31,8 @@ class CustomBatchNormTuple(NamedTuple):
     sigma: torch.Tensor  # standard deviation
 
 
-def custom_batch_norm_forward(input_: torch.Tensor) -> CustomBatchNormTuple:
-    """Custom batch norm forward function in Python.
+def standardize_forward(input_: torch.Tensor) -> CustomBatchNormTuple:
+    """Standardize forward function in Python.
 
     Args:
         input_: :math:`\\mathbf{x} \\in \\mathcal{R}^{m \\times d}`
@@ -48,12 +48,12 @@ def custom_batch_norm_forward(input_: torch.Tensor) -> CustomBatchNormTuple:
     return CustomBatchNormTuple(output, sigma)
 
 
-def custom_batch_norm_backward(
+def standardize_backward(
     grad: torch.Tensor,
     output: torch.Tensor,
     sigma: torch.Tensor,
 ) -> torch.Tensor:
-    """Custom batch norm backward function in Python.
+    """Standardize backward function in Python.
 
     Args:
         grad: :math:`(m, d)`
@@ -74,7 +74,7 @@ class CustomBatchNormFunctionMetaProto(Protocol):
     apply: Callable[[torch.Tensor], torch.Tensor]
 
 
-def custom_batch_norm_function_factory(
+def standardize_function_factory(
     name: Implementation,
 ) -> CustomBatchNormFunctionMetaProto:
     forward: Callable[[torch.Tensor], Sequence[torch.Tensor]]
@@ -83,14 +83,14 @@ def custom_batch_norm_function_factory(
         torch.Tensor,
     ]
     if name is Implementation.PYTHON:
-        forward = custom_batch_norm_forward
-        backward = custom_batch_norm_backward
+        forward = standardize_forward
+        backward = standardize_backward
     elif name is Implementation.CPP:
-        forward = custom_batch_norm_cpp_forward
-        backward = custom_batch_norm_cpp_backward
+        forward = standardize_cpp_forward
+        backward = standardize_cpp_backward
     elif name is Implementation.CUDA:
-        forward = custom_batch_norm_cuda_forward
-        backward = custom_batch_norm_cuda_backward
+        forward = standardize_cuda_forward
+        backward = standardize_cuda_backward
 
     class CustomBatchNormFunction(torch.autograd.Function):
 
@@ -117,34 +117,30 @@ def custom_batch_norm_function_factory(
     )
 
 
-custom_batch_norm = custom_batch_norm_function_factory(
-    Implementation.PYTHON,
-).apply
+standardize = standardize_function_factory(Implementation.PYTHON, ).apply
 
 try:
-    from .custom_batch_norm_cpp import (
-        custom_batch_norm_cpp_backward,
-        custom_batch_norm_cpp_forward,
+    from .standardize_cpp import (
+        standardize_cpp_backward,
+        standardize_cpp_forward,
     )
-    custom_batch_norm_cpp = custom_batch_norm_function_factory(
-        Implementation.CPP,
-    ).apply
+    standardize_cpp = standardize_function_factory(Implementation.CPP, ).apply
 except ImportError:
     if not TYPE_CHECKING:
-        custom_batch_norm_cpp_backward = None
-        custom_batch_norm_cpp_forward = None
-        custom_batch_norm_cpp = None
+        standardize_cpp_backward = None
+        standardize_cpp_forward = None
+        standardize_cpp = None
 
 try:
-    from .custom_batch_norm_cuda import (
-        custom_batch_norm_cuda_backward,
-        custom_batch_norm_cuda_forward,
+    from .standardize_cuda import (
+        standardize_cuda_backward,
+        standardize_cuda_forward,
     )
-    custom_batch_norm_cuda = custom_batch_norm_function_factory(
+    standardize_cuda = standardize_function_factory(
         Implementation.CUDA,
     ).apply
 except ImportError:
     if not TYPE_CHECKING:
-        custom_batch_norm_cuda_backward = None
-        custom_batch_norm_cuda_forward = None
-        custom_batch_norm_cuda = None
+        standardize_cuda_backward = None
+        standardize_cuda_forward = None
+        standardize_cuda = None
