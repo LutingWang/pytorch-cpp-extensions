@@ -1,5 +1,6 @@
 #include "../utils.hpp"
 
+#include <ATen/AccumulateType.h>
 #include <algorithm>
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -15,7 +16,7 @@ __global__ void stat(
     torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits> mu,
     torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
         sigma) {
-    using acc_scalar_t = scalar_t;
+    using acc_scalar_t = at::acc_type<scalar_t, true>;
 
     __shared__ int shared_n[WARP_SIZE];
     __shared__ acc_scalar_t shared_mean[WARP_SIZE];
@@ -115,24 +116,23 @@ __global__ void custom_batch_norm_cuda_backward_kernel(
     const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
         grad,
     const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
-        input,
+        output,
     const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
-        mu,
+        mean_grad,
     const torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
-        sigma,
+        mean_output_grad,
     torch::PackedTensorAccessor32<scalar_t, 2, torch::RestrictPtrTraits>
-        output) {
+        grad_input) {
     const int i = blockIdx.y * blockDim.y + threadIdx.y;
     const int j = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (i >= input.size(0) || j >= input.size(1)) {
+    if (i >= output.size(0) || j >= output.size(1)) {
         return;
     }
 
-    output[i][j]
-        = (grad[i][j] / input.size(0)
-           * ((input.size(0) - 1) / sigma[0][j]
-              - powf(input[i][j] - mu[0][j], 2) / powf(sigma[0][j], 3)));
+    grad_input[i][j]
+        = (grad[i][j] - mean_grad[0][j]
+           - (output[i][j] * mean_output_grad[0][j]));
 }
 
 std::vector<torch::Tensor> custom_batch_norm_cuda_forward(
@@ -161,6 +161,9 @@ std::vector<torch::Tensor> custom_batch_norm_cuda_forward(
                     torch::RestrictPtrTraits>());
         }));
 
+    // mu = input.mean(0, true);
+    // sigma = (input - mu).pow(2).mean(0, true).pow(0.5);
+
     threads = dim3(WARP_SIZE, WARP_SIZE);
     blocks = dim3(
         (input.size(1) - 1) / threads.x + 1,
@@ -187,50 +190,53 @@ std::vector<torch::Tensor> custom_batch_norm_cuda_forward(
                     torch::RestrictPtrTraits>());
         }));
 
-    return {output, mu, sigma};
+    return {output, sigma};
 }
 
 torch::Tensor custom_batch_norm_cuda_backward(
-    torch::Tensor grad,
-    torch::Tensor input,
-    torch::Tensor mu,
-    torch::Tensor sigma) {
+    torch::Tensor grad, torch::Tensor output, torch::Tensor sigma) {
     CHECK_INPUT(grad);
-    CHECK_INPUT(input);
-    CHECK_INPUT(mu);
+    CHECK_INPUT(output);
     CHECK_INPUT(sigma);
+
+    grad = grad / sigma;
+    auto mean_grad = grad.mean(0, true);
+    auto mean_output_grad = (output * grad).mean(0, true);
 
     const dim3 threads(WARP_SIZE, WARP_SIZE);
     const dim3 blocks(
-        (input.size(1) - 1) / threads.x + 1,
-        (input.size(0) - 1) / threads.y + 1);
+        (output.size(1) - 1) / threads.x + 1,
+        (output.size(0) - 1) / threads.y + 1);
 
-    auto output = torch::zeros_like(input);
+    auto grad_input = torch::zeros_like(output);
 
     AT_DISPATCH_FLOATING_TYPES(
-        input.type(), "custom_batch_norm_cuda_backward", ([&] {
-            custom_batch_norm_cuda_backward_kernel<
-                scalar_t><<<blocks, threads>>>(
-                grad.packed_accessor32<
-                    scalar_t,
-                    2,
-                    torch::RestrictPtrTraits>(),
-                input.packed_accessor32<
-                    scalar_t,
-                    2,
-                    torch::RestrictPtrTraits>(),
-                mu.packed_accessor32<scalar_t, 2, torch::RestrictPtrTraits>(),
-                sigma.packed_accessor32<
-                    scalar_t,
-                    2,
-                    torch::RestrictPtrTraits>(),
-                output.packed_accessor32<
-                    scalar_t,
-                    2,
-                    torch::RestrictPtrTraits>());
+        output.type(), "custom_batch_norm_cuda_backward", ([&] {
+            custom_batch_norm_cuda_backward_kernel<scalar_t>
+                <<<blocks, threads>>>(
+                    grad.packed_accessor32<
+                        scalar_t,
+                        2,
+                        torch::RestrictPtrTraits>(),
+                    output.packed_accessor32<
+                        scalar_t,
+                        2,
+                        torch::RestrictPtrTraits>(),
+                    mean_grad.packed_accessor32<
+                        scalar_t,
+                        2,
+                        torch::RestrictPtrTraits>(),
+                    mean_output_grad.packed_accessor32<
+                        scalar_t,
+                        2,
+                        torch::RestrictPtrTraits>(),
+                    grad_input.packed_accessor32<
+                        scalar_t,
+                        2,
+                        torch::RestrictPtrTraits>());
         }));
 
-    return output;
+    return grad_input;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
