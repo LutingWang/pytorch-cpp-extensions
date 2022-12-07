@@ -161,9 +161,6 @@ std::vector<torch::Tensor> custom_batch_norm_cuda_forward(
                     torch::RestrictPtrTraits>());
         }));
 
-    // mu = input.mean(0, true);
-    // sigma = (input - mu).pow(2).mean(0, true).pow(0.5);
-
     threads = dim3(WARP_SIZE, WARP_SIZE);
     blocks = dim3(
         (input.size(1) - 1) / threads.x + 1,
