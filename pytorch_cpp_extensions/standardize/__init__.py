@@ -1,1 +1,3 @@
+"""Standardize."""
+
 from .standardize import *

@@ -22,7 +22,7 @@ def mark_parameterize_size() -> pytest.mark.parametrize:
 
 
 @mark_parameterize_device()
-class TestCustomBatchNorm:
+class TestStandardize:
 
     def test_forward(self, device: str) -> None:
         input_ = torch.tensor([[15.0], [-1.0]], device=device)
@@ -44,7 +44,7 @@ class TestCustomBatchNorm:
 
 @mark_parameterize_device()
 @mark_parameterize_size()
-class TestCustomBatchNormCpp:
+class TestStandardizeCpp:
 
     def test_forward(self, device: str, size: tuple[int, int]) -> None:
         input_ = torch.rand(size, device=device)
@@ -71,7 +71,7 @@ class TestCustomBatchNormCpp:
 
 @mark_skipif_cuda_is_unavailable()
 @mark_parameterize_size()
-class TestCustomBatchNormCuda:
+class TestStandardizeCuda:
 
     def test_forward(self, size: tuple[int, int]) -> None:
         input_ = torch.rand(size, device='cuda')

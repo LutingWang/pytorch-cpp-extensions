@@ -1,5 +1,5 @@
 __all__ = [
-    'CustomBatchNormTuple',
+    'StandardizeTuple',
     'standardize_forward',
     'standardize_backward',
     'standardize',
@@ -11,14 +11,7 @@ __all__ = [
     'standardize_cuda',
 ]
 
-from typing import (
-    TYPE_CHECKING,
-    Callable,
-    NamedTuple,
-    Protocol,
-    Sequence,
-    cast,
-)
+from typing import TYPE_CHECKING, Callable, NamedTuple, Sequence, cast
 
 import einops
 import torch
@@ -26,12 +19,12 @@ import torch
 from ..utils import Implementation
 
 
-class CustomBatchNormTuple(NamedTuple):
+class StandardizeTuple(NamedTuple):
     output: torch.Tensor  # normalized features
     sigma: torch.Tensor  # standard deviation
 
 
-def standardize_forward(input_: torch.Tensor) -> CustomBatchNormTuple:
+def standardize_forward(input_: torch.Tensor) -> StandardizeTuple:
     """Standardize forward function in Python.
 
     Args:
@@ -45,7 +38,7 @@ def standardize_forward(input_: torch.Tensor) -> CustomBatchNormTuple:
     output = input_ - mu
     sigma = einops.reduce(output**2, 'm d -> 1 d', 'mean')**0.5
     output = output / sigma
-    return CustomBatchNormTuple(output, sigma)
+    return StandardizeTuple(output, sigma)
 
 
 def standardize_backward(
@@ -70,13 +63,10 @@ def standardize_backward(
     return grad_input
 
 
-class CustomBatchNormFunctionMetaProto(Protocol):
-    apply: Callable[[torch.Tensor], torch.Tensor]
+Apply = Callable[[torch.Tensor], torch.Tensor]
 
 
-def standardize_function_factory(
-    name: Implementation,
-) -> CustomBatchNormFunctionMetaProto:
+def standardize_function_factory(name: Implementation) -> Apply:
     forward: Callable[[torch.Tensor], Sequence[torch.Tensor]]
     backward: Callable[  # yapf: disable
         [torch.Tensor, torch.Tensor, torch.Tensor],
@@ -92,7 +82,7 @@ def standardize_function_factory(
         forward = standardize_cuda_forward
         backward = standardize_cuda_backward
 
-    class CustomBatchNormFunction(torch.autograd.Function):
+    class StandardizeFunction(torch.autograd.Function):
 
         @staticmethod
         def forward(
@@ -111,20 +101,17 @@ def standardize_function_factory(
             output, sigma = ctx.saved_tensors
             return backward(grad.contiguous(), output, sigma)
 
-    return cast(
-        CustomBatchNormFunctionMetaProto,
-        CustomBatchNormFunction,
-    )
+    return cast(Apply, StandardizeFunction.apply)
 
 
-standardize = standardize_function_factory(Implementation.PYTHON, ).apply
+standardize = standardize_function_factory(Implementation.PYTHON)
 
 try:
     from .standardize_cpp import (
         standardize_cpp_backward,
         standardize_cpp_forward,
     )
-    standardize_cpp = standardize_function_factory(Implementation.CPP, ).apply
+    standardize_cpp = standardize_function_factory(Implementation.CPP)
 except ImportError:
     if not TYPE_CHECKING:
         standardize_cpp_backward = None
@@ -136,9 +123,7 @@ try:
         standardize_cuda_backward,
         standardize_cuda_forward,
     )
-    standardize_cuda = standardize_function_factory(
-        Implementation.CUDA,
-    ).apply
+    standardize_cuda = standardize_function_factory(Implementation.CUDA)
 except ImportError:
     if not TYPE_CHECKING:
         standardize_cuda_backward = None
